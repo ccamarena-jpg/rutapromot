@@ -72,6 +72,22 @@ table.res input,table.res select{padding:4px 6px}
 <div id="side">
 
   <section class="card">
+    <h2>☁ Google Sheet (guardar / compartir)</h2>
+    <details id="syncBox"><summary class="mut" id="syncSum">Sin conexión — configurar</summary>
+      <label style="margin-top:6px">URL del Apps Script (termina en /exec)</label><input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec">
+      <label style="margin-top:4px">Clave</label><input type="text" id="syncKey" placeholder="la misma que en el script">
+      <div class="row" style="margin-top:6px"><button class="sm pri" id="syncSave">Conectar y cargar</button><span class="mut" style="flex:3">Equipo, reglas y puntos se leen del Sheet al abrir la web.</span></div>
+    </details>
+    <div class="row" style="margin-top:8px">
+      <button class="sm" id="syncPushTeam">⬆ Equipo + reglas</button>
+      <button class="sm" id="syncPushPts">⬆ Puntos</button>
+      <button class="sm" id="syncPushRoutes">⬆ Rutas</button>
+      <button class="sm" id="syncPull">⬇ Recargar</button>
+    </div>
+    <div id="syncMsg" class="mut" style="margin-top:4px"></div>
+  </section>
+
+  <section class="card">
     <h2>1 · Puntos de la semana</h2>
     <div class="row">
       <div><label>Archivo Excel / CSV</label><input type="file" id="file" accept=".csv,.xlsx,.xls"></div>
@@ -647,6 +663,53 @@ $('unassigned').onclick = e => {
 };
 $('fRes').onchange = $('fDay').onchange = () => drawMap();
 
+/* ---------- Google Sheet ---------- */
+const SYNC_KEY = 'rutasopt_sync';
+const syncCfg = () => { try{ return JSON.parse(localStorage.getItem(SYNC_KEY)||'{}'); }catch(e){ return {}; } };
+const PER_TXT = {S:'SEMANAL', Q1:'QUINCENAL 1', Q2:'QUINCENAL 2', M:'MENSUAL', '':''};
+const syncMsg = (t, bad) => { $('syncMsg').innerHTML = bad ? `<span class="warn">${esc(t)}</span>` : esc(t); };
+async function api(action, payload){
+  const c = syncCfg(); if(!c.url) throw new Error('Configura la URL del Apps Script.');
+  const r = payload
+    ? await fetch(c.url, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action, key:c.key||'', ...payload})})
+    : await fetch(`${c.url}?action=${action}&key=${encodeURIComponent(c.key||'')}`);
+  const j = await r.json(); if(!j.ok) throw new Error(j.error||'Error del servidor'); return j;
+}
+function refreshSyncUi(){ const c = syncCfg(); $('syncUrl').value = c.url||''; $('syncKey').value = c.key||'';
+  $('syncSum').textContent = c.url ? '✓ Conectado — editar conexión' : 'Sin conexión — configurar'; }
+async function pull(){
+  const j = await api('getAll');
+  if(j.equipo.length) state.resources = j.equipo.map(o => fullRes({name:String(o.Nombre), type:o.Tipo==='Móvil'?'Móvil':'Persona', speed:+o.KmH||15, hours:+o.Horas||8,
+    districts:String(o.Distritos||''), home:String(o['Vive en']||''), days:['L','M','X','J','V'].map(d=>o[d]===1||o[d]==='1'||o[d]===true||String(o[d]).toUpperCase()==='SI'?1:0),
+    supervisor:o.Supervisor===1||o.Supervisor==='1'||o.Supervisor===true||String(o.Supervisor).toUpperCase()==='SI'}));
+  if(j.config.sup) state.sup = j.config.sup;
+  if(j.config.params) for(const k in j.config.params) if($(k)) $(k).value = j.config.params[k];
+  if('depot' in j.config) { state.depot = j.config.depot; $('depotTxt').value = state.depot ? state.depot.lat.toFixed(5)+', '+state.depot.lng.toFixed(5) : ''; }
+  renderResources(); renderSup();
+  if(j.puntos.length){ const {out, bad} = rowsToPoints(j.puntos); setPoints(out, bad); }
+  save(); return j;
+}
+const pushTeam = () => api('saveEquipo', {rows: state.resources.map(r=>({Nombre:r.name, Tipo:r.type, KmH:r.speed, Horas:r.hours, Distritos:r.districts, 'Vive en':r.home,
+  L:r.days[0], M:r.days[1], X:r.days[2], J:r.days[3], V:r.days[4], Supervisor:r.supervisor?1:0}))})
+  .then(()=>api('saveConfig', {config:{sup:state.sup, depot:state.depot, params:{startTime:$('startTime').value, visitMin:$('visitMin').value, defFreq:$('defFreq').value, circ:$('circ').value, week:$('week').value, satHours:$('satHours').value}}}));
+const pushPts = () => api('savePuntos', {rows: state.points.map(p=>({ID:p.id, Nombre:p.name, Cadena:p.chain, Distrito:p.district, Lat:p.lat, Lon:p.lng, Frecuencia:PER_TXT[p._orig!==undefined?p._orig:p.per]||'', Minutos:p.min||''}))});
+function routeRows(){
+  const rows = [], week = $('week').value==='0' ? 'todas' : 'S'+$('week').value;
+  state.routes.forEach(r => { const res = state.resources[r.resIdx]; let t = startMin(), last = depotOf(r.resIdx);
+    r.stops.forEach((p,i)=>{ if(last) t += dist(last,p)/res.speed*60; const arr = t; t += p.vmin; last = p;
+      rows.push({Semana:week, Recurso:res.name, 'Día':DAYS[r.day], Orden:i+1, ID:p.id, Nombre:p.name, Distrito:p.district, Lat:p.lat, Lon:p.lng, 'Llegada est.':clock(arr), 'Min visita':p.vmin}); }); });
+  return rows;
+}
+async function doSync(label, fn){
+  syncMsg(label+'…');
+  try{ const r = await fn(); syncMsg('✓ '+label+' — listo'); return r; }catch(e){ syncMsg('✗ '+label+': '+e.message, true); }
+}
+$('syncSave').onclick = () => { localStorage.setItem(SYNC_KEY, JSON.stringify({url:$('syncUrl').value.trim(), key:$('syncKey').value.trim()})); refreshSyncUi(); doSync('Cargando desde el Sheet', pull); };
+$('syncPull').onclick = () => doSync('Cargando desde el Sheet', pull);
+$('syncPushTeam').onclick = () => doSync('Guardando equipo y reglas', pushTeam);
+$('syncPushPts').onclick = () => { if(!state.points.length) return syncMsg('No hay puntos para guardar.', true); doSync('Guardando '+state.points.length+' puntos', pushPts); };
+$('syncPushRoutes').onclick = () => { if(!state.routes.length) return syncMsg('Genera las rutas primero.', true); doSync('Guardando rutas', () => api('saveRutas', {rows:routeRows()})); };
+
 /* ---------- exportar ---------- */
 $('btnExport').onclick = () => {
   if(!state.routes.length) return alert('Genera las rutas primero.');
@@ -670,6 +733,8 @@ $('btnExport').onclick = () => {
 load(); renderResources(); renderSup();
 if(state.depot) $('depotTxt').value = state.depot.lat.toFixed(5)+', '+state.depot.lng.toFixed(5);
 setPoints(state.points);
+refreshSyncUi();
+if(syncCfg().url) doSync('Cargando desde el Sheet', pull);
 </script>
 </body>
 </html>
