@@ -75,7 +75,7 @@ table.res input,table.res select{padding:4px 6px}
     <h2>☁ Google Sheet (guardar / compartir)</h2>
     <details id="syncBox"><summary class="mut" id="syncSum">Sin conexión — configurar</summary>
       <label style="margin-top:6px">URL del Apps Script (termina en /exec)</label><input type="text" id="syncUrl" placeholder="https://script.google.com/macros/s/…/exec">
-      <label style="margin-top:4px">Clave</label><input type="text" id="syncKey" placeholder="la misma que en el script">
+<input type="hidden" id="syncKey">
       <div class="row" style="margin-top:6px"><button class="sm pri" id="syncSave">Conectar y cargar</button><span class="mut" style="flex:3">Equipo, reglas y puntos se leen del Sheet al abrir la web.</span></div>
     </details>
     <div class="row" style="margin-top:8px">

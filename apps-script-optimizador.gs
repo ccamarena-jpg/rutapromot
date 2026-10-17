@@ -6,9 +6,9 @@
 //   • Config   → reglas del supervisor y parámetros (clave / valor JSON)
 //   • Puntos   → padrón de tiendas con coordenadas y frecuencia
 //   • Rutas    → última ruta generada (se agrega al guardar desde la web)
-// Seguridad: la web envía una CLAVE; cámbiala abajo antes de desplegar.
+// Seguridad: opcional. Si API_KEY tiene valor, la web debe enviarla.
 // ═══════════════════════════════════════════════════════════════
-const API_KEY = 'CAMBIA-ESTA-CLAVE';
+const API_KEY = '';   // vacío = sin clave (cualquiera con la URL puede leer/escribir). Para proteger, escribe una clave aquí y en la web.
 const SS_NAME = 'Optimizador de Rutas BAT 2026';
 
 const H_EQUIPO = ['Nombre','Tipo','KmH','Horas','Distritos','Vive en','L','M','X','J','V','Supervisor'];
@@ -58,7 +58,7 @@ function json_(o){ return ContentService.createTextOutput(JSON.stringify(o)).set
 function doGet(e){
   try{
     const p = (e && e.parameter) || {};
-    if(p.key !== API_KEY) return json_({ok:false, error:'Clave incorrecta'});
+    if(API_KEY && p.key !== API_KEY) return json_({ok:false, error:'Clave incorrecta'});
     if(p.action === 'getAll'){
       const ss = ss_(), cfg = {};
       table_(ss, 'Config').forEach(r => { try{ cfg[r['Clave']] = JSON.parse(r['Valor (JSON)']); }catch(_){} });
@@ -71,7 +71,7 @@ function doGet(e){
 function doPost(e){
   try{
     const b = JSON.parse(e.postData.contents);
-    if(b.key !== API_KEY) return json_({ok:false, error:'Clave incorrecta'});
+    if(API_KEY && b.key !== API_KEY) return json_({ok:false, error:'Clave incorrecta'});
     const ss = ss_();
     if(b.action === 'saveEquipo'){
       write_(ss, 'Equipo', H_EQUIPO, b.rows.map(o => H_EQUIPO.map(h => o[h] === undefined ? '' : o[h])));
