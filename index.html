@@ -665,7 +665,8 @@ $('fRes').onchange = $('fDay').onchange = () => drawMap();
 
 /* ---------- Google Sheet ---------- */
 const SYNC_KEY = 'rutasopt_sync';
-const syncCfg = () => { try{ return JSON.parse(localStorage.getItem(SYNC_KEY)||'{}'); }catch(e){ return {}; } };
+const DEFAULT_SYNC_URL = 'https://script.google.com/macros/s/AKfycbypz4P_188B2t7WNgcQjAKt93YB_pvlulh7pCMqDcmOsdB3F4CwBPw-qJZVtO595MPU/exec';
+const syncCfg = () => { let c = {}; try{ c = JSON.parse(localStorage.getItem(SYNC_KEY)||'{}'); }catch(e){} return {url: c.url || DEFAULT_SYNC_URL, key: c.key || ''}; };
 const PER_TXT = {S:'SEMANAL', Q1:'QUINCENAL 1', Q2:'QUINCENAL 2', M:'MENSUAL', '':''};
 const syncMsg = (t, bad) => { $('syncMsg').innerHTML = bad ? `<span class="warn">${esc(t)}</span>` : esc(t); };
 async function api(action, payload){
